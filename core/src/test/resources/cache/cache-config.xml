@@ -1,0 +1,15 @@
+<ehcache name="jmxstats" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="ehcache.xsd"
+    updateCheck="false" monitoring="autodetect" 
+    dynamicConfig="true">
+	<cache name="fooBarStatusCache" maxElementsInMemory="10000" maxElementsOnDisk="100000000" eternal="false"
+     	 diskExpiryThreadIntervalSeconds="43200" clearOnFlush="false" cacheLoaderTimeoutMillis="1000" 
+     	 statistics="true" 
+     	 
+     	 > 
+	     <searchable>
+	     	<searchAttribute name="foo" expression="key.getFoo()"/>
+	     	<searchAttribute name="bar" expression="key.getBar()"/>
+	     </searchable>
+ 	</cache>
+</ehcache> 

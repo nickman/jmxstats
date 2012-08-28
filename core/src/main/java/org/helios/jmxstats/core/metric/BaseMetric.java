@@ -32,12 +32,177 @@ package org.helios.jmxstats.core.metric;
  * <p><code>org.helios.jmxstats.core.metric.BaseMetric</code></p>
  */
 public class BaseMetric {
+	/** The ID of the metric */
+	protected long id;
+	/** The metric name */
 	protected String name;
+	/** The metric type */
+	protected MetricType type;
+	
+	/** The interval start time */
 	protected long startTime;
+	/** The interval end time */
 	protected long endTime;
+	/** The count of events for the current interval */
 	protected long count;
+	/** The average value for the current interval */
 	protected long average;
+	/** The maximum value for the current interval */
 	protected long maximum;
+	/** The minimum value for the current interval */
 	protected long minimum;
-	protected int type;
+	
+	/**
+	 * Processes a new interval value for the current interval
+	 * @param value the new value to process
+	 * @return this metric
+	 */
+	public BaseMetric process(long value) {
+		
+		return this;
+	}
+ 
+	/**
+	 * Executes an interval reset on this metric
+	 * @param currentTime The common interval time
+	 * @return this metric
+	 */
+	public BaseMetric reset(long currentTime) {
+		
+		return this;
+	}
+	/**
+	 * Returns the globally unique metric id
+	 * @return the id
+	 */
+	public long getId() {
+		return id;
+	}
+	
+	/**
+	 * Returns the metric name
+	 * @return the name
+	 */
+	public String getName() {
+		return name;
+	}
+	/**
+	 * Returns the interval start time
+	 * @return the startTime
+	 */
+	public long getStartTime() {
+		return startTime;
+	}
+	/**
+	 * Returns the interval end time
+	 * @return the endTime
+	 */
+	public long getEndTime() {
+		return endTime;
+	}
+	/**
+	 * Returns the interval event count
+	 * @return the count
+	 */
+	public long getCount() {
+		return count;
+	}
+	/**
+	 * Returns the average value for the current interval
+	 * @return the average
+	 */
+	public long getAverage() {
+		return average;
+	}
+	/**
+	 * Returns the maximum value for the current interval
+	 * @return the maximum
+	 */
+	public long getMaximum() {
+		return maximum;
+	}
+	/**
+	 * Returns the minimum value for the current interval
+	 * @return the minimum
+	 */
+	public long getMinimum() {
+		return minimum;
+	}
+	/**
+	 * Returns the metric type
+	 * @return the type
+	 */
+	public MetricType getType() {
+		return type;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		StringBuilder builder = new StringBuilder();
+		builder.append("BaseMetric [id=");
+		builder.append(id);
+		builder.append(", ");
+		if (name != null) {
+			builder.append("name=");
+			builder.append(name);
+			builder.append(", ");
+		}
+		if (type != null) {
+			builder.append("type=");
+			builder.append(type);
+			builder.append(", ");
+		}
+		builder.append("startTime=");
+		builder.append(startTime);
+		builder.append(", endTime=");
+		builder.append(endTime);
+		builder.append(", count=");
+		builder.append(count);
+		builder.append(", average=");
+		builder.append(average);
+		builder.append(", maximum=");
+		builder.append(maximum);
+		builder.append(", minimum=");
+		builder.append(minimum);
+		builder.append("]");
+		return builder.toString();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#hashCode()
+	 */
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + (int) (id ^ (id >>> 32));
+		return result;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		BaseMetric other = (BaseMetric) obj;
+		if (id != other.id) {
+			return false;
+		}
+		return true;
+	}
 }

@@ -24,6 +24,8 @@
  */
 package org.helios.jmxstats.core;
 
+import org.helios.jmxstats.core.Controller.CurrentInterval;
+
 /**
  * <p>Title: IntervalListener</p>
  * <p>Description: Defines a class that wants to listen on interval switch events</p> 
@@ -34,9 +36,7 @@ package org.helios.jmxstats.core;
 public interface IntervalListener {
 	/**
 	 * Callback from the system clock when an interval switches
-	 * @param intervalId The interval ID
-	 * @param startTime The new interval start time
-	 * @param endTime The new interval end time
+	 * @param ci The current interval
 	 */
-	public void onIntervalSwitch(long intervalId, long startTime, long endTime);
+	public void onIntervalSwitch(CurrentInterval ci);
 }

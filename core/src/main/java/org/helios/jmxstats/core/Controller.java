@@ -56,6 +56,8 @@ public class Controller {
 	private static volatile Controller instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
+	/** The data storage chronicle */
+	private final ChronicleController chronicleController;
 	
 	/**
 	 * Returns the Controller singleton
@@ -73,7 +75,7 @@ public class Controller {
 	}
 	
 	private Controller() {
-		
+		chronicleController = ChronicleController.getInstance();
 	}
 	
 	/**
@@ -124,8 +126,8 @@ public class Controller {
 		Controller.getInstance().addIntervalListener(new IntervalListener() {
 			final SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss,S");			
 			@Override
-			public void onIntervalSwitch(long intervalId, long startTime, long endTime) {
-				log("\n\t=========================================\n\tInterval Switch:" + intervalId + "\n\tStart:" + sdf.format(new Date(startTime)) + "\n\tEnd:" + sdf.format(new Date(endTime)) + "\n\t=========================================");
+			public void onIntervalSwitch(CurrentInterval ci) {
+				log("\n\t=========================================\n\tInterval Switch:" + ci.currentIntervalId + "\n\tStart:" + sdf.format(ci.getStartDate()) + "\n\tEnd:" + sdf.format(ci.getEndDate()) + "\n\t=========================================");
 			}
 		});		
 		try { Thread.currentThread().join(); } catch (Exception e) {}
@@ -147,6 +149,168 @@ public class Controller {
 	}
 	
 	/**
+	 * <p>Title: CurrentInterval</p>
+	 * <p>Description: A container class for the current interval data, collected in this class so it can be maintained atomically</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>org.helios.jmxstats.core.Controller.CurrentInterval</code></p>
+	 */
+	public static class CurrentInterval {
+		/** Date formatter */
+		private static final SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss,S");
+		/** The interval ID factory */
+		private static final AtomicLong INTERVAL_SERIAL = new AtomicLong(-1);
+		/** The current instance */
+		private static AtomicReference<CurrentInterval> CURRENT = new AtomicReference<CurrentInterval>(null); 
+		/** The current interval ID */
+		private final long currentIntervalId;
+		/** The start time of the interval */
+		private final long startTime;
+		/** The end time of the interval */
+		private final long endTime;
+		
+		/**
+		 * Creates the next CurrentInterval
+		 * @return the created interval
+		 */
+		private static CurrentInterval next() {
+			CurrentInterval current = CURRENT.get();
+			if(current==null) {
+				synchronized(CURRENT) {
+					current = CURRENT.get();
+					if(current==null) {
+						long time = SystemClock.roundDownTime();
+						current = new CurrentInterval(time, time + SystemClock.INTERVAL-1);
+						CURRENT.set(current);						
+					}
+				}
+			} else {
+				current = new CurrentInterval(current.endTime+1, current.endTime+SystemClock.INTERVAL);
+				CURRENT.set(current);				
+			}
+			return current;
+		}
+		
+		
+
+
+		/**
+		 * Creates a new CurrentInterval
+		 * @param startTime The start time of the interval
+		 * @param endTime The end time of the interval
+		 */
+		private CurrentInterval(long startTime, long endTime) {
+			this.currentIntervalId = INTERVAL_SERIAL.incrementAndGet();
+			this.startTime = startTime;
+			this.endTime = endTime;
+		}
+
+		/**
+		 * Returns the current interval ID
+		 * @return the currentIntervalId
+		 */
+		public long getCurrentIntervalId() {
+			return currentIntervalId;
+		}
+
+		/**
+		 * Returns the start time of the interval 
+		 * @return the startTime
+		 */
+		public long getStartTime() {
+			return startTime;
+		}
+
+		/**
+		 * Returns the end time of the interval 
+		 * @return the endTime
+		 */
+		public long getEndTime() {
+			return endTime;
+		}
+		
+		/**
+		 * Returns the start date of the interval 
+		 * @return the start date
+		 */
+		public Date getStartDate() {
+			return new Date(startTime);
+		}
+
+		/**
+		 * Returns the end date of the interval 
+		 * @return the end date
+		 */
+		public Date getEndDate() {
+			return new Date(endTime);
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#toString()
+		 */
+		@Override
+		public String toString() {
+			String start, end;
+			synchronized(sdf) {
+				start = sdf.format(getStartDate());
+				end = sdf.format(getEndDate());
+			}
+			StringBuilder builder = new StringBuilder();
+			builder.append("CurrentInterval [currentIntervalId=");
+			builder.append(currentIntervalId);
+			builder.append(", startDate=");
+			builder.append(start);
+			builder.append(", endDate=");
+			builder.append(end);
+			builder.append("]");
+			return builder.toString();
+		}
+
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#hashCode()
+		 */
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result
+					+ (int) (currentIntervalId ^ (currentIntervalId >>> 32));
+			return result;
+		}
+
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#equals(java.lang.Object)
+		 */
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj) {
+				return true;
+			}
+			if (obj == null) {
+				return false;
+			}
+			if (getClass() != obj.getClass()) {
+				return false;
+			}
+			CurrentInterval other = (CurrentInterval) obj;
+			if (currentIntervalId != other.currentIntervalId) {
+				return false;
+			}
+			return true;
+		}
+
+		
+		
+		
+		
+	}
+	
+	/**
 	 * <p>Title: IntervalListenerRunnable</p>
 	 * <p>Description: A runnable wrapped interval listener for submitting to an executor</p> 
 	 * <p>Company: Helios Development Group LLC</p>
@@ -156,18 +320,15 @@ public class Controller {
 	private static class IntervalListenerRunnable implements Callable<Void> {
 		/** The wrapped listener */
 		private final IntervalListener listener;
-		static private long _intervalId = 0, _startTime = 0, _endTime = 0;
+		/** The current interval to pass to listeners */
+		static private CurrentInterval _currentInterval;
 		
 		/**
 		 * Updates the interval data
-		 * @param intervalId The interval ID
-		 * @param startTime The new interval start time
-		 * @param endTime The new interval end time
+		 * @param currentInterval The current interval
 		 */
-		public static void update(long intervalId, long startTime, long endTime) {
-			_intervalId = intervalId;
-			_startTime = startTime;
-			_endTime = endTime;
+		public static void update(CurrentInterval currentInterval) {
+			_currentInterval = currentInterval;
 		}
 
 		/**
@@ -179,7 +340,7 @@ public class Controller {
 		}
 		
 		public Void call() {
-			listener.onIntervalSwitch(_intervalId, _startTime, _endTime);
+			listener.onIntervalSwitch(_currentInterval);
 			return null;
 		}
 
@@ -259,15 +420,23 @@ public class Controller {
 		public static final String INTERVAL_PROP = "org.helios.interval"; 
 		/** The database time interval */
 		private static long INTERVAL;
-		/** Tracks the current interval ID */
-		private static final AtomicLong INTERVAL_ID = new AtomicLong(0L);
-		/** The current interval start time */
-		private static final AtomicLong CURRENT_INTERVAL_START = new AtomicLong(0L);
-		/** The current interval end time */
-		private static final AtomicLong CURRENT_INTERVAL_END = new AtomicLong(0L);
-		
+		/** A reference to the current clock impl. */
+		private static final AtomicReference<SystemClock> currentClock;
+		/** Tracks the current interval */
+		private static final AtomicReference<CurrentInterval> CURRENT_INTERVAL;
 		/** Startup latch */
 		private static final CountDownLatch startupLatch = new CountDownLatch(1); 
+		/** The VM start time in ms. */
+		public static final long startTime = ManagementFactory.getRuntimeMXBean().getStartTime();
+		/** The test time */
+		private static final AtomicLong testTime = new AtomicLong(0L);
+		/** Holds the start timestamp of an elapsed time measurement */
+		private static final ThreadLocal<long[]> timerStart = new ThreadLocal<long[]>() {
+			protected long[] initialValue() {
+				return new long[1];
+			}
+		};
+		
 		
 		
 		/** Runnable that awaits the interval period , then increments the interval and drops the interval barrier */
@@ -292,20 +461,17 @@ public class Controller {
 		/** Runnable that waits on the interval trip and then initiates execution of listener notifications  */
 		private static final Runnable intervalAction = new Runnable() {
 			public void run() {
-				incrementIntervalTime(SystemClock.roundDownTime());
 				startupLatch.countDown();
 				while(true) {
 					try {					
 						Thread.currentThread().join();						
 					} catch (InterruptedException ex) {
 						Thread.interrupted();
-						if(INTERVAL_ID.get()==Long.MAX_VALUE) {
-							INTERVAL_ID.set(0);
-						}
-						long newInterval = INTERVAL_ID.incrementAndGet();
-						long[] times = incrementIntervalTime();
+						final CurrentInterval ci = CurrentInterval.next();
+						CURRENT_INTERVAL.set(ci);
+						
 						if(!listeners.isEmpty()) {
-							IntervalListenerRunnable.update(newInterval, times[0], times[1]);
+							IntervalListenerRunnable.update(ci);
 							try {
 								executor.invokeAll(listeners);
 							} catch (InterruptedException e) {
@@ -324,42 +490,8 @@ public class Controller {
 		/** Interval thread to dispatch interval events */
 		private static final Thread intervalActionThread = new Thread(SystemClockThreadGroup, intervalAction, "IntervalAction");
 		
-		/**
-		 * Initializes the interval window
-		 * @param current The current start time 
-		 */
-		private static long[] incrementIntervalTime(long current) {
-			long nextStart = current;
-			long nextEnd = nextStart + INTERVAL;
-
-			CURRENT_INTERVAL_START.set(nextStart);
-			CURRENT_INTERVAL_END.set(nextEnd);
-			return new long[]{nextStart, nextEnd};
-		}
-		
-		/**
-		 * Updates the interval window 
-		 */
-		private static long[] incrementIntervalTime() {
-			long nextStart = CURRENT_INTERVAL_END.get()+1;
-			long nextEnd = nextStart + INTERVAL -1;
-			CURRENT_INTERVAL_START.set(nextStart);
-			CURRENT_INTERVAL_END.set(nextEnd);
-			return new long[]{nextStart, nextEnd};
-			
-			
-		}
 		
 		
-		/**
-		 * Resets the interval thread
-		 * @param interval The new interval in ms.
-		 */
-		private static void resetIntervalThread(long interval) {
-			INTERVAL = interval;
-			intervalThread.interrupt();
-			INTERVAL_ID.set(0);
-		}
 		
 		static {
 			try {
@@ -367,12 +499,15 @@ public class Controller {
 			} catch (Exception e) {
 				INTERVAL = 15000;
 			}
+			currentClock = new AtomicReference<SystemClock>(DIRECT);
+			CURRENT_INTERVAL = new AtomicReference<CurrentInterval>(CurrentInterval.next());					
 			intervalThread.setDaemon(true);
 			intervalThread.setPriority(Thread.MAX_PRIORITY);
 			intervalActionThread.setDaemon(true);
 			intervalActionThread.setPriority(Thread.NORM_PRIORITY);
 			intervalActionThread.start();
-			intervalThread.start();
+			intervalThread.start();	
+			
 		}
 		
 
@@ -419,18 +554,6 @@ public class Controller {
 			return clock.time();
 		}
 		
-		/** The VM start time in ms. */
-		public static final long startTime = ManagementFactory.getRuntimeMXBean().getStartTime();
-		/** The test time */
-		private static final AtomicLong testTime = new AtomicLong(0L);
-		/** A reference to the current clock impl. */
-		private static final AtomicReference<SystemClock> currentClock = new AtomicReference<SystemClock>(DIRECT);
-		/** Holds the start timestamp of an elapsed time measurement */
-		private static final ThreadLocal<long[]> timerStart = new ThreadLocal<long[]>() {
-			protected long[] initialValue() {
-				return new long[1];
-			}
-		};
 		
 		
 		/**

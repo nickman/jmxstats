@@ -25,17 +25,22 @@
 package org.helios.jmxstats.core;
 
 import java.lang.management.ManagementFactory;
+import java.text.SimpleDateFormat;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.BrokenBarrierException;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-
-import org.helios.jmxstats.core.Controller.SystemClock.ElapsedTime;
 
 
 /**
@@ -94,30 +99,123 @@ public class Controller {
 	 * @param args None
 	 */
 	public static void main(String[] args) {
-		log("Controller");
-		SystemClock.setCurrentClock(SystemClock.NANO);
-		int loopCount = 100000;
-		long total = 0;
-		long currentTime = SystemClock.time();
-		for(int i = 0; i < loopCount; i++) {
-			//total += System.currentTimeMillis()%SystemClock.INTERVAL;
-			//total += currentTime%SystemClock.INTERVAL;
-			total += SystemClock.time()%SystemClock.INTERVAL;
+		final SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss,S");
+		log("Controller\n\tStart Time:" + sdf.format(new Date(SystemClock.roundDownTime())));
+//		SystemClock.setCurrentClock(SystemClock.NANO);
+//		int loopCount = 100000;
+//		long total = 0;
+//		long currentTime = SystemClock.time();
+//		for(int i = 0; i < loopCount; i++) {
+//			//total += System.currentTimeMillis()%SystemClock.INTERVAL;
+//			//total += currentTime%SystemClock.INTERVAL;
+//			total += SystemClock.time()%SystemClock.INTERVAL;
+//		}
+//		log("Warmup Complete");
+//		total = 0;
+//		currentTime = SystemClock.time();
+//		SystemClock.startTimer();
+//		for(int i = 0; i < loopCount; i++) {
+//			//total += System.currentTimeMillis()%SystemClock.INTERVAL;
+//			//total += currentTime%SystemClock.INTERVAL;
+//			total += SystemClock.time()%SystemClock.INTERVAL;
+//		}
+//		ElapsedTime et = SystemClock.endTimer();
+//		log("Test Complete:\n\tTotal:" + total + "\n\t"  + et + "\n\tAverage ns:" + et.avgNs(loopCount));
+		Controller.getInstance().addIntervalListener(new IntervalListener() {
+			final SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss,S");			
+			@Override
+			public void onIntervalSwitch(long intervalId, long startTime, long endTime) {
+				log("\n\t=========================================\n\tInterval Switch:" + intervalId + "\n\tStart:" + sdf.format(new Date(startTime)) + "\n\tEnd:" + sdf.format(new Date(endTime)) + "\n\t=========================================");
+			}
+		});		
+		try { Thread.currentThread().join(); } catch (Exception e) {}
+		
+		
+	}
+	
+	/** A set of registered interval listeners */
+	private static final Set<IntervalListenerRunnable> listeners = new CopyOnWriteArraySet<IntervalListenerRunnable>();
+	
+	/**
+	 * Registers a new {@link IntervalListener}
+	 * @param listener the {@link IntervalListener} to register
+	 */
+	public void addIntervalListener(IntervalListener listener) {
+		if(listener!=null) {
+			listeners.add(new IntervalListenerRunnable(listener));
 		}
-		log("Warmup Complete");
-		total = 0;
-		currentTime = SystemClock.time();
-		SystemClock.startTimer();
-		for(int i = 0; i < loopCount; i++) {
-			//total += System.currentTimeMillis()%SystemClock.INTERVAL;
-			//total += currentTime%SystemClock.INTERVAL;
-			total += SystemClock.time()%SystemClock.INTERVAL;
+	}
+	
+	/**
+	 * <p>Title: IntervalListenerRunnable</p>
+	 * <p>Description: A runnable wrapped interval listener for submitting to an executor</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>org.helios.jmxstats.core.Controller.IntervalListenerRunnable</code></p>
+	 */
+	private static class IntervalListenerRunnable implements Callable<Void> {
+		/** The wrapped listener */
+		private final IntervalListener listener;
+		static private long _intervalId = 0, _startTime = 0, _endTime = 0;
+		
+		/**
+		 * Updates the interval data
+		 * @param intervalId The interval ID
+		 * @param startTime The new interval start time
+		 * @param endTime The new interval end time
+		 */
+		public static void update(long intervalId, long startTime, long endTime) {
+			_intervalId = intervalId;
+			_startTime = startTime;
+			_endTime = endTime;
 		}
-		ElapsedTime et = SystemClock.endTimer();
-		log("Test Complete:\n\tTotal:" + total + "\n\t"  + et + "\n\tAverage ns:" + et.avgNs(loopCount));
+
+		/**
+		 * Creates a new IntervalListenerRunnable
+		 * @param listener The listener to wrap
+		 */
+		public IntervalListenerRunnable(IntervalListener listener) {
+			this.listener = listener;
+		}
 		
-		
-		
+		public Void call() {
+			listener.onIntervalSwitch(_intervalId, _startTime, _endTime);
+			return null;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#hashCode()
+		 */
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result
+					+ ((listener == null) ? 0 : listener.hashCode());
+			return result;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#equals(java.lang.Object)
+		 */
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			IntervalListenerRunnable other = (IntervalListenerRunnable) obj;
+			if (listener == null) {
+				if (other.listener != null)
+					return false;
+			} else if (!listener.equals(other.listener))
+				return false;
+			return true;
+		}
 	}
 	
 	/**
@@ -144,7 +242,18 @@ public class Controller {
 		/** A test clock for which the current time can be specified */
 		TEST(new TestClock());
 		
+		/** The thread group for system clock threads */
 		private static final ThreadGroup SystemClockThreadGroup = new ThreadGroup("SystemClock");
+		/** Thread pool for executing interval actions */
+		private static final ExecutorService executor = Executors.newCachedThreadPool(new ThreadFactory(){
+			private final AtomicInteger serial = new AtomicInteger(0);
+			@Override
+			public Thread newThread(Runnable r) {
+				Thread t = new Thread(SystemClockThreadGroup, r, "SystemClockWorker#" + serial.incrementAndGet());
+				t.setDaemon(true);
+				return t;
+			}
+		});
 		
 		/** The interval property name */
 		public static final String INTERVAL_PROP = "org.helios.interval"; 
@@ -152,6 +261,11 @@ public class Controller {
 		private static long INTERVAL;
 		/** Tracks the current interval ID */
 		private static final AtomicLong INTERVAL_ID = new AtomicLong(0L);
+		/** The current interval start time */
+		private static final AtomicLong CURRENT_INTERVAL_START = new AtomicLong(0L);
+		/** The current interval end time */
+		private static final AtomicLong CURRENT_INTERVAL_END = new AtomicLong(0L);
+		
 		/** Startup latch */
 		private static final CountDownLatch startupLatch = new CountDownLatch(1); 
 		
@@ -164,11 +278,13 @@ public class Controller {
 				} catch (InterruptedException ex) {
 					// HUH ?
 				}
-				try {
-					intervalThread.join(INTERVAL);
-					long newInterval = INTERVAL_ID.incrementAndGet();
-				} catch (InterruptedException ex) {
-					Thread.interrupted();
+				while(true) {
+					try {
+						intervalThread.join(INTERVAL);					
+						intervalActionThread.interrupt();
+					} catch (InterruptedException ex) {
+						Thread.interrupted();
+					}
 				}
 			}			
 		};
@@ -176,26 +292,64 @@ public class Controller {
 		/** Runnable that waits on the interval trip and then initiates execution of listener notifications  */
 		private static final Runnable intervalAction = new Runnable() {
 			public void run() {
+				incrementIntervalTime(SystemClock.roundDownTime());
+				startupLatch.countDown();
 				while(true) {
 					try {					
-						intervalBarrier.await();
-						intervalBarrier.reset();
-						// FIRE INTERVAL EVENT
+						Thread.currentThread().join();						
 					} catch (InterruptedException ex) {
 						Thread.interrupted();
-					} catch (BrokenBarrierException e) {
-						// HOW TO HANDLE ?
+						if(INTERVAL_ID.get()==Long.MAX_VALUE) {
+							INTERVAL_ID.set(0);
+						}
+						long newInterval = INTERVAL_ID.incrementAndGet();
+						long[] times = incrementIntervalTime();
+						if(!listeners.isEmpty()) {
+							IntervalListenerRunnable.update(newInterval, times[0], times[1]);
+							try {
+								executor.invokeAll(listeners);
+							} catch (InterruptedException e) {
+								e.printStackTrace();
+							}
+						}
 					}
 				}
 			}			
 		};
 
-		/** The interval barrier */
-		private static final CyclicBarrier intervalBarrier = new CyclicBarrier(2, intervalAction ); 
 
 		
 		/** Interval thread to compute the new interval ID every interval */
 		private static final Thread intervalThread = new Thread(SystemClockThreadGroup, intervalRunnable, "IntervalThread", 1024);
+		/** Interval thread to dispatch interval events */
+		private static final Thread intervalActionThread = new Thread(SystemClockThreadGroup, intervalAction, "IntervalAction");
+		
+		/**
+		 * Initializes the interval window
+		 * @param current The current start time 
+		 */
+		private static long[] incrementIntervalTime(long current) {
+			long nextStart = current;
+			long nextEnd = nextStart + INTERVAL;
+
+			CURRENT_INTERVAL_START.set(nextStart);
+			CURRENT_INTERVAL_END.set(nextEnd);
+			return new long[]{nextStart, nextEnd};
+		}
+		
+		/**
+		 * Updates the interval window 
+		 */
+		private static long[] incrementIntervalTime() {
+			long nextStart = CURRENT_INTERVAL_END.get()+1;
+			long nextEnd = nextStart + INTERVAL -1;
+			CURRENT_INTERVAL_START.set(nextStart);
+			CURRENT_INTERVAL_END.set(nextEnd);
+			return new long[]{nextStart, nextEnd};
+			
+			
+		}
+		
 		
 		/**
 		 * Resets the interval thread
@@ -215,6 +369,9 @@ public class Controller {
 			}
 			intervalThread.setDaemon(true);
 			intervalThread.setPriority(Thread.MAX_PRIORITY);
+			intervalActionThread.setDaemon(true);
+			intervalActionThread.setPriority(Thread.NORM_PRIORITY);
+			intervalActionThread.start();
 			intervalThread.start();
 		}
 		
@@ -236,6 +393,13 @@ public class Controller {
 		public static long time() {
 			return currentClock.get().getTime();
 		}
+		
+		public static long roundDownTime() {
+			long time = currentClock.get().getTime();
+			long over = time%INTERVAL;
+			return time-over;
+		}
+		
 		
 		public static SystemClock currentClock() {
 			return currentClock.get();

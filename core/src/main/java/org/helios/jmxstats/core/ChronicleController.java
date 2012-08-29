@@ -49,6 +49,8 @@ public class ChronicleController {
 	/** The number of entries in the chronicle */
 	protected final AtomicLong entryCount = new AtomicLong(0);
 	
+	
+	
 	/** The singleton instance */
 	private static volatile ChronicleController instance = null;
 	/** The singleton instance ctor lock */
@@ -61,7 +63,7 @@ public class ChronicleController {
 	/** The chronicle home directory */
 	public static final File CHRONICLE_HOME_DIR = new File(System.getProperty("user.home") + File.separator + ".jmxstats");
 	/** The default chronicle databit size estimate */
-	public static final int CHRONICLE_SIZE_EST = 20;
+	public static final int CHRONICLE_SIZE_EST = 100;
 	
 	/**
 	 * Acquires the ChronicleController singleton instance

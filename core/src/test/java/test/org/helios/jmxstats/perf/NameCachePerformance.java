@@ -31,6 +31,7 @@ import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -57,7 +58,7 @@ public class NameCachePerformance {
 	/** The minimum word size */
 	public static final int WORD_SIZE = 7;
 	/** The warmup loop count */
-	public static final int WARMUP_LOOPS = 10;
+	public static final int WARMUP_LOOPS = 2;
 	/** The measurement loop count */
 	public static final int LOOPS = 1;
 	/** The lookup measurement loop count */
@@ -67,6 +68,11 @@ public class NameCachePerformance {
 	
 	/** The name cache */
 	private static final Map<CharSequence, Long> namecache = new ConcurrentHashMap<CharSequence, Long>(WORD_COUNT, 0.5f, 1);
+	/** The hashcode cache */
+	private static final Map<Integer, Long> hashCodeCache = new ConcurrentHashMap<Integer, Long>(WORD_COUNT, 0.5f, 1);
+	/** The long hashcode cache */
+	private static final Map<Long, Long> longHashCodeCache = new ConcurrentHashMap<Long, Long>(WORD_COUNT, 0.5f, 1);
+	
 	
 	/**
 	 * @param args
@@ -111,6 +117,36 @@ public class NameCachePerformance {
 			long[] results = testDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
 			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
 		}
+		log("Running Int HashCode Test");
+		namecache.clear();
+		try {
+			for(int i = 0; i < WARMUP_LOOPS; i++) {
+				testIntHashCodeBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+			}
+			log("Warmup Complete");
+			for(int i = 0; i < LOOPS; i++) {
+				long[] results = testIntHashCodeBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+				log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+			}
+		} catch (Exception e) {
+			log("Int HashCode Test FAILED:" + e.getMessage());
+		}
+		log("Running Long HashCode Test");
+		namecache.clear();
+		try {
+			for(int i = 0; i < WARMUP_LOOPS; i++) {
+				testLongHashCodeBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+			}
+			log("Warmup Complete");
+			for(int i = 0; i < LOOPS; i++) {
+				long[] results = testLongHashCodeBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+				log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+			}
+		} catch (Exception e) {
+			log("Long HashCode Test FAILED:" + e.getMessage());
+		}
+		
+		//  testIntHashCodeBufferType
 		
 	}
 	
@@ -149,6 +185,7 @@ public class NameCachePerformance {
 		et = SystemClock.endTimer();
 		results[2] = et.elapsedMs;
 		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
 		getCurrentHeapUsage();
 		return results;
 	}
@@ -180,6 +217,7 @@ public class NameCachePerformance {
 		et = SystemClock.endTimer();
 		results[2] = et.elapsedMs;
 		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
 		getCurrentHeapUsage();
 		return results;
 	}
@@ -203,6 +241,7 @@ public class NameCachePerformance {
 			for(String s: lookups) {
 				CharBuffer cb = ByteBuffer.allocateDirect(maxBufferSize).asCharBuffer().append(s);
 				cb.asReadOnlyBuffer().flip();
+				if(!cb.isDirect()) throw new RuntimeException("Direct CharBuffer was not Direct", new Throwable());
 				if(namecache.get(cb)==null) {
 					throw new RuntimeException("Lookup returned null", new Throwable());
 				}
@@ -211,10 +250,82 @@ public class NameCachePerformance {
 		et = SystemClock.endTimer();
 		results[2] = et.elapsedMs;
 		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
 		getCurrentHeapUsage();
 		return results;
 	}
 	
+	protected static long[] testIntHashCodeBufferType(final Set<String> words) {
+		long[] results = new long[4];		
+		SystemClock.startTimer();
+		long index = 0;
+		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
+			hashCodeCache.put(iter.next().hashCode(), index);
+			iter.remove();
+			index++;
+		}
+		//if(hashCodeCache.size()!= WORD_COUNT) throw new IllegalArgumentException("Int HashCodeCache Had Collision:" + WORD_COUNT + " vs. " + hashCodeCache.size(), new Throwable());
+		ElapsedTime et = SystemClock.endTimer();
+		results[0] = et.elapsedMs;
+		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {								
+				if(hashCodeCache.get(s.hashCode())==null) {
+					throw new RuntimeException("Lookup returned null", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
+		hashCodeCache.clear();
+		getCurrentHeapUsage();
+		return results;
+	}
+	
+	protected static long[] testLongHashCodeBufferType(final Set<String> words) {
+		long[] results = new long[4];		
+		SystemClock.startTimer();
+		long index = 0;
+		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
+			longHashCodeCache.put(longHashCode(iter.next()), index);
+			iter.remove();
+			index++;
+		}
+		if(longHashCodeCache.size()!= WORD_COUNT) throw new IllegalArgumentException("Long HashCodeCache Had Collision:" + WORD_COUNT + " vs. " + longHashCodeCache.size(), new Throwable());
+		ElapsedTime et = SystemClock.endTimer();
+		results[0] = et.elapsedMs;
+		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {								
+				if(longHashCodeCache.get(longHashCode(s))==null) {
+					throw new RuntimeException("Lookup returned null", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
+		longHashCodeCache.clear();
+		getCurrentHeapUsage();
+		return results;
+	}
+	
+	
+	public static long longHashCode(String s) {
+		if(s==null) return 0;
+		long key = s.hashCode();		
+		key += new StringBuilder(s).reverse().toString().hashCode();
+		return key;
+	}
 	
 	public static void log(Object msg) {
 		System.out.println(msg);
@@ -242,7 +353,7 @@ public class NameCachePerformance {
 					if(loadedWords==numberOfWords) break;
 				}
 			}
-			if(loadedWords<numberOfWords) throw new Exception("Failed to load [" + numberOfWords + "]. Insuffucient data. Loaded [" + loadedWords + "]", new Throwable());
+			if(loadedWords<numberOfWords || words.size() != numberOfWords) throw new Exception("Failed to load [" + numberOfWords + "]. Insuffucient data. Loaded [" + loadedWords + "]", new Throwable());
 			maxBufferSize = maxSize*2;
 			return words;
 		} catch (Exception e) {

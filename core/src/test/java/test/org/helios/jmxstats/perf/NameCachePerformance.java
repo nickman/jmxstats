@@ -24,6 +24,8 @@
  */
 package test.org.helios.jmxstats.perf;
 
+import gnu.trove.map.hash.TObjectLongHashMap;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,13 +33,16 @@ import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPInputStream;
+
+import net.sf.ehcache.Cache;
+import net.sf.ehcache.CacheManager;
+import net.sf.ehcache.Element;
 
 import org.helios.jmxstats.core.Controller.SystemClock;
 import org.helios.jmxstats.core.Controller.SystemClock.ElapsedTime;
@@ -58,31 +63,35 @@ public class NameCachePerformance {
 	/** The minimum word size */
 	public static final int WORD_SIZE = 7;
 	/** The warmup loop count */
-	public static final int WARMUP_LOOPS = 2;
+	public static final int WARMUP_LOOPS = 10;
 	/** The measurement loop count */
 	public static final int LOOPS = 1;
 	/** The lookup measurement loop count */
-	public static final int LOOKUP_LOOPS =2;
+	public static final int LOOKUP_LOOPS = 5;
 	
 	private static int maxBufferSize = 0;
 	
 	/** The name cache */
-	private static final Map<CharSequence, Long> namecache = new ConcurrentHashMap<CharSequence, Long>(WORD_COUNT, 0.5f, 1);
+	private static Map<CharSequence, Long> namecache = new ConcurrentHashMap<CharSequence, Long>(WORD_COUNT, 0.5f, 1);
 	/** The hashcode cache */
 	private static final Map<Integer, Long> hashCodeCache = new ConcurrentHashMap<Integer, Long>(WORD_COUNT, 0.5f, 1);
 	/** The long hashcode cache */
 	private static final Map<Long, Long> longHashCodeCache = new ConcurrentHashMap<Long, Long>(WORD_COUNT, 0.5f, 1);
 	
+//	private static CacheManager cm = CacheManager.newInstance();
+//	private static Cache noDiskCache = new Cache("namecache", WORD_COUNT, false, true, 0, 0);
+//	private static Cache allDiskCache = new Cache("namecache", WORD_COUNT, true, true, 0, 0);
 	
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) {
 		log("NameCachePerformance\n\tLoading words...");
-//		SystemClock.startTimer();
-//		Set<String> words = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
-//		ElapsedTime et = SystemClock.endTimer();
-//		log("Loaded " + WORD_COUNT + " words: " + et);
+		SystemClock.startTimer();
+		loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		ElapsedTime et = SystemClock.endTimer();
+		log("Loaded " + WORD_COUNT + " words: " + et + "\nLongest Word is " + (maxBufferSize/2));
+		
 		log("Running Simple String Test");
 		for(int i = 0; i < WARMUP_LOOPS; i++) {
 			testStringType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
@@ -94,17 +103,17 @@ public class NameCachePerformance {
 			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
 		}
 		namecache.clear();
-		log("Running Heap CharBuffer Test");
-		for(int i = 0; i < WARMUP_LOOPS; i++) {
-			testCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			namecache.clear();
-		}
-		log("Warmup Complete");
-		namecache.clear();
-		for(int i = 0; i < LOOPS; i++) {
-			long[] results = testCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
-		}
+//		log("Running Heap CharBuffer Test");
+//		for(int i = 0; i < WARMUP_LOOPS; i++) {
+//			testCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+//			namecache.clear();
+//		}
+//		log("Warmup Complete");
+//		namecache.clear();
+//		for(int i = 0; i < LOOPS; i++) {
+//			long[] results = testCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+//			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+//		}
 		log("Running Direct CharBuffer Test");
 		namecache.clear();
 		for(int i = 0; i < WARMUP_LOOPS; i++) {
@@ -145,8 +154,50 @@ public class NameCachePerformance {
 		} catch (Exception e) {
 			log("Long HashCode Test FAILED:" + e.getMessage());
 		}
+		log("Running Trove String Test");	
+		namecache.clear(); hashCodeCache.clear(); longHashCodeCache.clear();
+		try {
+			for(int i = 0; i < WARMUP_LOOPS; i++) {
+				testTroveStringType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+			}
+			log("Warmup Complete");
+			for(int i = 0; i < LOOPS; i++) {
+				long[] results = testTroveStringType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+				log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+			}
+		} catch (Exception e) {
+			log("Trove HashCode Test FAILED:" + e.getMessage());
+		}
+//		log("Running Trove Direct CharBuffer Test");	
+//		try {
+//			for(int i = 0; i < WARMUP_LOOPS; i++) {
+//				testTroveDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+//			}
+//			log("Warmup Complete");
+//			for(int i = 0; i < LOOPS; i++) {
+//				long[] results = testTroveDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+//				log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+//			}
+//		} catch (Exception e) {
+//			log("Trove HashCode Test FAILED:" + e.getMessage());
+//		}
+//		log("Running EHCache String Test");	
+//		cm.addCache(noDiskCache);
+//		noDiskCache.setSampledStatisticsEnabled(false);
+//		noDiskCache.setStatisticsEnabled(false);
+//		try {
+//			for(int i = 0; i < WARMUP_LOOPS; i++) {
+//				testCacheStringType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE), noDiskCache);
+//			}
+//			log("Warmup Complete");
+//			for(int i = 0; i < LOOPS; i++) {
+//				long[] results = testCacheStringType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE), noDiskCache);
+//				log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+//			}
+//		} catch (Exception e) {
+//			log("Trove EHCache String  Test FAILED:" + e.getMessage());
+//		}
 		
-		//  testIntHashCodeBufferType
 		
 	}
 	
@@ -189,6 +240,108 @@ public class NameCachePerformance {
 		getCurrentHeapUsage();
 		return results;
 	}
+	
+	protected static long[] testTroveStringType(final Set<String> words) {
+		TObjectLongHashMap<CharSequence> tnc = new TObjectLongHashMap<CharSequence>(WORD_COUNT, 0.5f, Long.MIN_VALUE);
+		long TROVE_NULL = Long.MIN_VALUE;
+		long[] results = new long[4];		
+		SystemClock.startTimer();
+		long index = 0;
+		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
+			tnc.put(iter.next(), index);
+			iter.remove();
+			index++;
+		}
+		ElapsedTime et = SystemClock.endTimer();
+		results[0] = et.elapsedMs;
+		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {
+				if(tnc.get(s)==TROVE_NULL) {
+					throw new RuntimeException("Lookup returned null for name [" + s + "]", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
+		tnc.clear(); tnc = null;
+		getCurrentHeapUsage();		
+		return results;
+	}
+	
+	protected static long[] testCacheStringType(final Set<String> words, Cache cache) {		
+		long[] results = new long[4];		
+		SystemClock.startTimer();
+		long index = 0;
+		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
+			cache.put(new Element(iter.next(), index));
+			iter.remove();
+			index++;
+		}
+		ElapsedTime et = SystemClock.endTimer();
+		results[0] = et.elapsedMs;
+		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {				
+				if(cache.get(s)==null) {
+					throw new RuntimeException("Lookup returned null for name [" + s + "]", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
+		cache.removeAll();
+		getCurrentHeapUsage();		
+		return results;
+	}
+	
+	
+	protected static long[] testTroveDirectCharBufferType(final Set<String> words) {
+		TObjectLongHashMap<CharSequence> tnc = new TObjectLongHashMap<CharSequence>(WORD_COUNT, 0.5f, Long.MIN_VALUE);
+		long TROVE_NULL = Long.MIN_VALUE;
+		long[] results = new long[4];		
+		SystemClock.startTimer();
+		long index = 0;
+		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
+			tnc.put(ByteBuffer.allocateDirect(maxBufferSize).asCharBuffer().append(iter.next()), index);
+			iter.remove();
+			index++;
+		}
+		ElapsedTime et = SystemClock.endTimer();
+		results[0] = et.elapsedMs;
+		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {
+				CharBuffer cb = ByteBuffer.allocateDirect(maxBufferSize).asCharBuffer().append(s);
+				cb.asReadOnlyBuffer().flip();
+				if(tnc.get(cb)==TROVE_NULL) {
+					throw new RuntimeException("Lookup returned null for name [" + s + "]", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		lookups.clear(); lookups = null;
+		tnc.clear(); tnc = null;
+		getCurrentHeapUsage();		
+		return results;
+	}
+	
+	
 	
 	protected static long[] testCharBufferType(final Set<String> words) {
 		long[] results = new long[4];		
@@ -241,7 +394,6 @@ public class NameCachePerformance {
 			for(String s: lookups) {
 				CharBuffer cb = ByteBuffer.allocateDirect(maxBufferSize).asCharBuffer().append(s);
 				cb.asReadOnlyBuffer().flip();
-				if(!cb.isDirect()) throw new RuntimeException("Direct CharBuffer was not Direct", new Throwable());
 				if(namecache.get(cb)==null) {
 					throw new RuntimeException("Lookup returned null", new Throwable());
 				}
@@ -306,7 +458,7 @@ public class NameCachePerformance {
 		for(int i = 0; i < LOOKUP_LOOPS; i++) {
 			for(String s: lookups) {								
 				if(longHashCodeCache.get(longHashCode(s))==null) {
-					throw new RuntimeException("Lookup returned null", new Throwable());
+					//throw new RuntimeException("Lookup returned null", new Throwable());
 				}
 			}
 		}

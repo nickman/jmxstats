@@ -26,7 +26,8 @@ package test.org.helios.jmxstats.perf;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -35,6 +36,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.GZIPInputStream;
 
 import org.helios.jmxstats.core.Controller.SystemClock;
 import org.helios.jmxstats.core.Controller.SystemClock.ElapsedTime;
@@ -49,15 +51,17 @@ import org.helios.jmxstats.core.Controller.SystemClock.ElapsedTime;
 
 public class NameCachePerformance {
 	/** The words source file */
-	public static final String FILE_NAME = "src/test/resources/words.txt";
+	public static final String FILE_NAME = "src/test/resources/words.txt.gz";
 	/** The number of words to load */
 	public static final int WORD_COUNT = 70000;
 	/** The minimum word size */
 	public static final int WORD_SIZE = 7;
 	/** The warmup loop count */
-	public static final int WARMUP_LOOPS = 3;
+	public static final int WARMUP_LOOPS = 10;
 	/** The measurement loop count */
 	public static final int LOOPS = 1;
+	/** The lookup measurement loop count */
+	public static final int LOOKUP_LOOPS =2;
 	
 	private static int maxBufferSize = 0;
 	
@@ -81,7 +85,7 @@ public class NameCachePerformance {
 		log("Warmup Complete");		
 		for(int i = 0; i < LOOPS; i++) {
 			long[] results = testStringType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1]);
+			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
 		}
 		namecache.clear();
 		log("Running Heap CharBuffer Test");
@@ -93,7 +97,7 @@ public class NameCachePerformance {
 		namecache.clear();
 		for(int i = 0; i < LOOPS; i++) {
 			long[] results = testCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1]);
+			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
 		}
 		log("Running Direct CharBuffer Test");
 		namecache.clear();
@@ -105,7 +109,7 @@ public class NameCachePerformance {
 		namecache.clear();
 		for(int i = 0; i < LOOPS; i++) {
 			long[] results = testDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1]);
+			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
 		}
 		
 	}
@@ -121,7 +125,7 @@ public class NameCachePerformance {
 	}
 	
 	protected static long[] testStringType(final Set<String> words) {
-		long[] results = new long[2];		
+		long[] results = new long[4];		
 		SystemClock.startTimer();
 		long index = 0;
 		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
@@ -132,11 +136,25 @@ public class NameCachePerformance {
 		ElapsedTime et = SystemClock.endTimer();
 		results[0] = et.elapsedMs;
 		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {
+				if(namecache.get(s)==null) {
+					throw new RuntimeException("Lookup returned null", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		getCurrentHeapUsage();
 		return results;
 	}
 	
 	protected static long[] testCharBufferType(final Set<String> words) {
-		long[] results = new long[2];		
+		long[] results = new long[4];		
 		SystemClock.startTimer();
 		long index = 0;
 		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
@@ -147,11 +165,27 @@ public class NameCachePerformance {
 		ElapsedTime et = SystemClock.endTimer();
 		results[0] = et.elapsedMs;
 		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {
+				CharBuffer cb = CharBuffer.wrap(s);
+				cb.asReadOnlyBuffer().flip();				
+				if(namecache.get(cb)==null) {
+					throw new RuntimeException("Lookup returned null", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		getCurrentHeapUsage();
 		return results;
 	}
 	
 	protected static long[] testDirectCharBufferType(final Set<String> words) {
-		long[] results = new long[2];		
+		long[] results = new long[4];		
 		SystemClock.startTimer();
 		long index = 0;
 		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {			
@@ -162,6 +196,22 @@ public class NameCachePerformance {
 		ElapsedTime et = SystemClock.endTimer();
 		results[0] = et.elapsedMs;
 		results[1] = getCurrentHeapUsage();
+		
+		Set<String> lookups = loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE);
+		SystemClock.startTimer();
+		for(int i = 0; i < LOOKUP_LOOPS; i++) {
+			for(String s: lookups) {
+				CharBuffer cb = ByteBuffer.allocateDirect(maxBufferSize).asCharBuffer().append(s);
+				cb.asReadOnlyBuffer().flip();
+				if(namecache.get(cb)==null) {
+					throw new RuntimeException("Lookup returned null", new Throwable());
+				}
+			}
+		}
+		et = SystemClock.endTimer();
+		results[2] = et.elapsedMs;
+		results[3] = et.avgNs(LOOKUP_LOOPS * WORD_COUNT);
+		getCurrentHeapUsage();
 		return results;
 	}
 	
@@ -172,14 +222,16 @@ public class NameCachePerformance {
 	
 	public static Set<String> loadWords(String fileName, int numberOfWords, int minLength) {
 		Set<String> words = new HashSet<String>(numberOfWords);
-		FileReader fis = null;
+		FileInputStream fis = null;
+		GZIPInputStream gis = null;
 		BufferedReader bis = null;
 		int maxSize = 0;
 		try {
 			File f = new File(fileName);
 			if(!f.canRead()) throw new Exception("Unable to read file [" + fileName + "]", new Throwable());
-			fis = new FileReader(f);
-			bis = new BufferedReader(fis);
+			fis = new FileInputStream(f);
+			gis = new GZIPInputStream(fis);
+			bis = new BufferedReader(new InputStreamReader(gis));
 			int loadedWords = 0;
 			String word = null;
 			while((word = bis.readLine()) != null) {

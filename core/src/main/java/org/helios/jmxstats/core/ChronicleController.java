@@ -26,6 +26,8 @@ package org.helios.jmxstats.core;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.CharBuffer;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import vanilla.java.chronicle.Excerpt;
@@ -63,7 +65,10 @@ public class ChronicleController {
 	/** The chronicle home directory */
 	public static final File CHRONICLE_HOME_DIR = new File(System.getProperty("user.home") + File.separator + ".jmxstats");
 	/** The default chronicle databit size estimate */
-	public static final int CHRONICLE_SIZE_EST = 100;
+	public static final int CHRONICLE_SIZE_EST = 10;
+	
+	/** The lookup cache to map a metric's name to the corresponding chronicle index */
+	private final ConcurrentHashMap<CharBuffer, Long> nameIndex = new ConcurrentHashMap<CharBuffer, Long>(1024, 0.5f, 32);
 	
 	/**
 	 * Acquires the ChronicleController singleton instance
@@ -80,6 +85,9 @@ public class ChronicleController {
 		return instance;
 	}
 	
+	/**
+	 * Creates a new ChronicleController and initializes the underlying chronicle
+	 */
 	private ChronicleController() {
 		chronicleName = System.getProperty(CHRONICLE_PROP, DEFAULT_CHRONICLE_NAME);
 		if(!CHRONICLE_HOME_DIR.exists()) {
@@ -116,6 +124,26 @@ public class ChronicleController {
 		ex.writeLong(entryCount.get());
 		ex.finish();
 		log("Created ControlBlock [" + ex.index() + "]");
+	}
+	
+	
+	/**
+	 * Returns the chronicle index of the passed metric name
+	 * @param name The metric name
+	 * @return the chronicle index of the passed metric name, or null if one is not registered
+	 */
+	public Long getMetricNameIndex(CharSequence name) {
+		if(name==null) throw new IllegalArgumentException("The passed metric name was null", new Throwable());
+		return nameIndex.get(CharBuffer.wrap(name));
+	}
+	
+	/**
+	 * Indicates if the passed metric name has been registered
+	 * @param name The metric name to test for
+	 * @return true if the metric name has been registered, false otherwise
+	 */
+	public boolean isMetricCreated(CharSequence name) {
+		return getMetricNameIndex(name)!=null;
 	}
 	
 	/**

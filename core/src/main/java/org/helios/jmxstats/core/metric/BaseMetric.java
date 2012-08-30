@@ -24,6 +24,11 @@
  */
 package org.helios.jmxstats.core.metric;
 
+import java.util.Properties;
+
+import org.helios.jmxstats.core.Controller.SystemClock;
+import org.helios.jmxstats.core.Controller.SystemClock.ElapsedTime;
+
 /**
  * <p>Title: BaseMetric</p>
  * <p>Description: The base metric type</p> 
@@ -134,6 +139,62 @@ public class BaseMetric {
 	 */
 	public MetricType getType() {
 		return type;
+	}
+	
+	public static long longHashCode(CharSequence name) {
+		if(name==null) return 0;
+		StringBuilder b = new StringBuilder(name.toString());
+		long hash = b.toString().hashCode();
+		hash += b.reverse().hashCode();
+		return hash;
+	}
+	
+	public static long hashCode(CharSequence name) {
+		if(name==null) return 0;
+		return name.toString().hashCode();
+	}
+	
+	
+	public static void main(String[] args) {
+		log("LongHashCode Test");
+		int loopCount = 10000;
+		Properties p = System.getProperties();
+		String[] names = new String[p.size()*3];
+		int x = 0;
+		for(String key: p.stringPropertyNames()) {
+			String value = p.getProperty(key);
+			names[x] = key;
+			x++;
+			names[x] = value;
+			x++;
+			names[x] = key+"="+value;
+		}
+		log("Testing with " + x + " names.");
+		long t = Long.MIN_VALUE;
+		for(int i = 0; i < loopCount; i++) {
+			for(String s: names) {
+				//t += longHashCode(s);
+				t += hashCode(s);
+			}			
+			t = Long.MIN_VALUE;
+		}
+		log("Warmup Complete");
+		SystemClock.startTimer();
+		t = Long.MIN_VALUE;
+		for(int i = 0; i < loopCount; i++) {
+			for(String s: names) {
+				//t += longHashCode(s);
+				t += hashCode(s);
+			}			
+			t = Long.MIN_VALUE;
+		}
+		ElapsedTime et = SystemClock.endTimer();
+		log("Elapsed Time:" + et);
+		log("Average ns:" + et.avgNs(loopCount*x));
+	}
+	
+	public static void log(Object msg) {
+		System.out.println(msg);
 	}
 
 	/**

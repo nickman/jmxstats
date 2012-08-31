@@ -31,12 +31,12 @@ import org.helios.jmxstats.core.Controller.SystemClock.ElapsedTime;
 
 /**
  * <p>Title: BaseMetric</p>
- * <p>Description: The base metric type</p> 
+ * <p>Description: The base concrete metric type</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>org.helios.jmxstats.core.metric.BaseMetric</code></p>
  */
-public class BaseMetric {
+public class BaseMetric implements IMetric {
 	/** The ID of the metric */
 	protected long id;
 	/** The metric name */
@@ -58,85 +58,94 @@ public class BaseMetric {
 	protected long minimum;
 	
 	/**
-	 * Processes a new interval value for the current interval
-	 * @param value the new value to process
-	 * @return this metric
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#process(long)
 	 */
-	public BaseMetric process(long value) {
+	@Override
+	public IMetric process(long value) {
 		
 		return this;
 	}
  
 	/**
-	 * Executes an interval reset on this metric
-	 * @param currentTime The common interval time
-	 * @return this metric
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#reset(long)
 	 */
-	public BaseMetric reset(long currentTime) {
+	@Override
+	public IMetric reset(long currentTime) {
 		
 		return this;
 	}
 	/**
-	 * Returns the globally unique metric id
-	 * @return the id
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getId()
 	 */
+	@Override
 	public long getId() {
 		return id;
 	}
 	
 	/**
-	 * Returns the metric name
-	 * @return the name
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getName()
 	 */
+	@Override
 	public String getName() {
 		return name;
 	}
 	/**
-	 * Returns the interval start time
-	 * @return the startTime
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getStartTime()
 	 */
+	@Override
 	public long getStartTime() {
 		return startTime;
 	}
 	/**
-	 * Returns the interval end time
-	 * @return the endTime
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getEndTime()
 	 */
+	@Override
 	public long getEndTime() {
 		return endTime;
 	}
 	/**
-	 * Returns the interval event count
-	 * @return the count
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getCount()
 	 */
+	@Override
 	public long getCount() {
 		return count;
 	}
 	/**
-	 * Returns the average value for the current interval
-	 * @return the average
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getAverage()
 	 */
+	@Override
 	public long getAverage() {
 		return average;
 	}
 	/**
-	 * Returns the maximum value for the current interval
-	 * @return the maximum
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getMaximum()
 	 */
+	@Override
 	public long getMaximum() {
 		return maximum;
 	}
 	/**
-	 * Returns the minimum value for the current interval
-	 * @return the minimum
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getMinimum()
 	 */
+	@Override
 	public long getMinimum() {
 		return minimum;
 	}
 	/**
-	 * Returns the metric type
-	 * @return the type
+	 * {@inheritDoc}
+	 * @see org.helios.jmxstats.core.metric.IMetric#getType()
 	 */
+	@Override
 	public MetricType getType() {
 		return type;
 	}

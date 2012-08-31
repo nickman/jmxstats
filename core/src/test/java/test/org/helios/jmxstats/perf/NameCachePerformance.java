@@ -24,6 +24,7 @@
  */
 package test.org.helios.jmxstats.perf;
 
+import gnu.trove.map.hash.TLongLongHashMap;
 import gnu.trove.map.hash.TObjectLongHashMap;
 
 import java.io.BufferedReader;
@@ -41,7 +42,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPInputStream;
 
 import net.sf.ehcache.Cache;
-import net.sf.ehcache.CacheManager;
 import net.sf.ehcache.Element;
 
 import org.helios.jmxstats.core.Controller.SystemClock;
@@ -59,11 +59,11 @@ public class NameCachePerformance {
 	/** The words source file */
 	public static final String FILE_NAME = "src/test/resources/words.txt.gz";
 	/** The number of words to load */
-	public static final int WORD_COUNT = 70000;
+	public static final int WORD_COUNT = 500000;
 	/** The minimum word size */
-	public static final int WORD_SIZE = 7;
+	public static final int WORD_SIZE =1;
 	/** The warmup loop count */
-	public static final int WARMUP_LOOPS = 10;
+	public static final int WARMUP_LOOPS = 5;
 	/** The measurement loop count */
 	public static final int LOOPS = 1;
 	/** The lookup measurement loop count */
@@ -114,18 +114,18 @@ public class NameCachePerformance {
 //			long[] results = testCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
 //			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
 //		}
-		log("Running Direct CharBuffer Test");
-		namecache.clear();
-		for(int i = 0; i < WARMUP_LOOPS; i++) {
-			testDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			namecache.clear();
-		}
-		log("Warmup Complete");
-		namecache.clear();
-		for(int i = 0; i < LOOPS; i++) {
-			long[] results = testDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
-			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
-		}
+//		log("Running Direct CharBuffer Test");
+//		namecache.clear();
+//		for(int i = 0; i < WARMUP_LOOPS; i++) {
+//			testDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+//			namecache.clear();
+//		}
+//		log("Warmup Complete");
+//		namecache.clear();
+//		for(int i = 0; i < LOOPS; i++) {
+//			long[] results = testDirectCharBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
+//			log("RESULTS:  Elapsed ms:" + results[0] + "  Heap MB:" + results[1] + "  Lookup Time (ms):" + results[2] + "  Lookup Per (ns):" + results[3]);
+//		}
 		log("Running Int HashCode Test");
 		namecache.clear();
 		try {
@@ -140,8 +140,8 @@ public class NameCachePerformance {
 		} catch (Exception e) {
 			log("Int HashCode Test FAILED:" + e.getMessage());
 		}
-		log("Running Long HashCode Test");
-		namecache.clear();
+		hashCodeCache.clear();
+		log("Running Long HashCode Test");		
 		try {
 			for(int i = 0; i < WARMUP_LOOPS; i++) {
 				testLongHashCodeBufferType(loadWords(FILE_NAME, WORD_COUNT, WORD_SIZE));
@@ -154,7 +154,9 @@ public class NameCachePerformance {
 		} catch (Exception e) {
 			log("Long HashCode Test FAILED:" + e.getMessage());
 		}
-		log("Running Trove String Test");	
+		longHashCodeCache.clear();
+		//testTroveStringType
+		log("Running Trove LongLongHashCode Test");	
 		namecache.clear(); hashCodeCache.clear(); longHashCodeCache.clear();
 		try {
 			for(int i = 0; i < WARMUP_LOOPS; i++) {
@@ -242,13 +244,13 @@ public class NameCachePerformance {
 	}
 	
 	protected static long[] testTroveStringType(final Set<String> words) {
-		TObjectLongHashMap<CharSequence> tnc = new TObjectLongHashMap<CharSequence>(WORD_COUNT, 0.5f, Long.MIN_VALUE);
+		TLongLongHashMap tnc = new TLongLongHashMap(WORD_COUNT, 0.5f, Long.MIN_VALUE, Long.MIN_VALUE);
 		long TROVE_NULL = Long.MIN_VALUE;
 		long[] results = new long[4];		
 		SystemClock.startTimer();
 		long index = 0;
 		for(Iterator<String> iter = words.iterator(); iter.hasNext();) {
-			tnc.put(iter.next(), index);
+			tnc.put(longHashCode(iter.next()), index);
 			iter.remove();
 			index++;
 		}
@@ -260,7 +262,7 @@ public class NameCachePerformance {
 		SystemClock.startTimer();
 		for(int i = 0; i < LOOKUP_LOOPS; i++) {
 			for(String s: lookups) {
-				if(tnc.get(s)==TROVE_NULL) {
+				if(tnc.get(longHashCode(s))==TROVE_NULL) {
 					throw new RuntimeException("Lookup returned null for name [" + s + "]", new Throwable());
 				}
 			}
@@ -458,9 +460,9 @@ public class NameCachePerformance {
 		for(int i = 0; i < LOOKUP_LOOPS; i++) {
 			for(String s: lookups) {								
 				if(longHashCodeCache.get(longHashCode(s))==null) {
-					//throw new RuntimeException("Lookup returned null", new Throwable());
+					throw new RuntimeException("Lookup returned null", new Throwable());
 				}
-			}
+			}			
 		}
 		et = SystemClock.endTimer();
 		results[2] = et.elapsedMs;
@@ -473,11 +475,33 @@ public class NameCachePerformance {
 	
 	
 	public static long longHashCode(String s) {
-		if(s==null) return 0;
-		long key = s.hashCode();		
-		key += new StringBuilder(s).reverse().toString().hashCode();
-		return key;
+		long h = 0;
+        int len = s.length();
+    	int off = 0;
+    	int hashPrime = s.hashCode(); //getOrNextPrime(s.hashCode());
+    	char val[] = s.toCharArray();
+
+        for (int i = 0; i < len; i++) {
+            h = (31*h + val[off++] + (hashPrime*h));
+        }
+        return h;
+
 	}
+	
+	public static int getOrNextPrime(int i) {
+		while(!isPrime(i)) {
+			if(Integer.MAX_VALUE==i) throw new RuntimeException("Hashing failure for [" + i + "]", new Throwable());
+			i++;			
+		}
+		return i;
+	}
+	
+	public static boolean isPrime(int n){
+	    for(int i = 2; i <= Math.sqrt(n); i += 2){
+	            if(n%i == 0 && n != i) return false;
+	    }
+	    return true;
+	}	
 	
 	public static void log(Object msg) {
 		System.out.println(msg);
@@ -498,14 +522,62 @@ public class NameCachePerformance {
 			int loadedWords = 0;
 			String word = null;
 			while((word = bis.readLine()) != null) {
-				if(word.length()>=minLength) {
-					words.add(word);
-					if(word.length()>maxSize) maxSize = word.length();
-					loadedWords++;
-					if(loadedWords==numberOfWords) break;
+				if(word.length()>=minLength) {	
+					word = word.toLowerCase();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					word = word.toUpperCase();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					word = new StringBuilder(word.toLowerCase()).reverse().toString();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					word = new StringBuilder(word.toUpperCase()).reverse().toString();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					word = new StringBuilder(word.toLowerCase()).reverse().append(word).toString();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					word = new StringBuilder(word).reverse().toString();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					word = word.toUpperCase();
+					if(!words.contains(word)) {
+						words.add(word);
+						if(word.length()>maxSize) maxSize = word.length();
+						loadedWords++;
+						if(loadedWords==numberOfWords) break;
+					}
+					
+					
 				}
 			}
-			if(loadedWords<numberOfWords || words.size() != numberOfWords) throw new Exception("Failed to load [" + numberOfWords + "]. Insuffucient data. Loaded [" + loadedWords + "]", new Throwable());
+			if(loadedWords<numberOfWords) throw new Exception("Failed to load [" + numberOfWords + "]. Insuffucient data. Loaded [" + loadedWords + "/" + words.size() + "]", new Throwable());
+			if(words.size() != numberOfWords) throw new Exception("Failed to load [" + numberOfWords + "]. Collisions. Loaded [" + loadedWords + "/" + words.size() + "]", new Throwable());
 			maxBufferSize = maxSize*2;
 			return words;
 		} catch (Exception e) {
